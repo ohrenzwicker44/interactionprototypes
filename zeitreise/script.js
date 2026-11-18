@@ -1,19 +1,17 @@
 'use strict';
 
 /* =====================================================================
-   WAS KOSTETE DAS DAMALS? – Grundgerüst
+   WAS KOSTETE DAS DAMALS? – Grundgerüst (Tuner-Version)
 
-   Aufbau dieser Datei:
+   Aufbau:
      1. Konfiguration & Daten   (hier pflegst du Läden, Produkte, Preise)
      2. Zustand
      3. Hilfsfunktionen
-     4. Zeitrad
-     5. Zeitstrahl
-     6. Laden & Hände
-     7. Start
+     4. Tuner (Skala, Zeiger, Rändelrad)
+     5. Laden & Hände
+     6. Start
 
-   Keine externen Bibliotheken, keine CDN-Links – läuft auch offline,
-   z. B. direkt aus einem Ordner oder auf einem Ausstellungsrechner.
+   Keine externen Bibliotheken – läuft auch offline.
    ===================================================================== */
 
 
@@ -24,11 +22,10 @@
 const YEAR_MIN   = 1900;
 const YEAR_MAX   = 2025;
 const START_YEAR = 1960;
-const SWEEP      = 270;   // Drehbereich des Rades in Grad (-135° … +135°)
+const PPY        = 14;    // Pixel pro Jahr auf der Skala (= Abstand der Rillen am Rad)
 
 /* Währungsepochen (Blick auf Deutschland, ohne DDR).
-   Preise werden nur INNERHALB einer Epoche interpoliert, damit z. B. der
-   Sprung von DM zu Euro nicht verrechnet wird. */
+   Preise werden nur INNERHALB einer Epoche interpoliert. */
 const ERAS = [
   { from: 1900, to: 1923, symbol: 'M',  name: 'Mark' },
   { from: 1924, to: 1947, symbol: 'RM', name: 'Reichsmark' },
@@ -42,9 +39,8 @@ const ERAS = [
 
    ACHTUNG: Alle Preise unten sind PLATZHALTER zum Testen, nicht recherchiert!
 
-   Neuen Laden hinzufügen (z. B. 'kino' oder 'technik'): einfach einen
-   weiteren Eintrag in SHOPS anlegen und später mit enterShop('kino')
-   betreten. */
+   Neuen Laden hinzufügen (z. B. 'kino', 'technik'): weiteren Eintrag in
+   SHOPS anlegen und mit enterShop('kino') betreten. */
 const SHOPS = {
   lebensmittel: {
     name: 'Lebensmittelladen',
@@ -83,8 +79,10 @@ const HAND_RIGHT_IMG = 'graphics/handrechts.png';
    --------------------------------------------------------------------- */
 
 const state = {
-  yearFloat: START_YEAR,   // exakte Radstellung (kann zwischen Jahren liegen)
+  yearFloat: START_YEAR,   // exakte Skalenposition (kann zwischen Jahren liegen)
   shownYear: null,         // zuletzt dargestelltes ganzes Jahr
+  velocity: 0,             // Schwung nach dem Loslassen (Jahre pro Frame)
+  target: null,            // Zieljahr für sanftes Gleiten (Tastatur, Klick)
   shopId: 'lebensmittel',  // aktueller Laden
   held: null,              // { shopId, id } – Produkt in der rechten Hand
   busy: false,             // true während das Produkt zur Hand fliegt
@@ -161,225 +159,77 @@ function stickerText(shopId, productId) {
 
 
 /* ---------------------------------------------------------------------
-   4. ZEITRAD
+   4. TUNER
+   Die Skala (Canvas) läuft unter dem festen roten Zeiger durch.
+   Darunter zeigt das Rändelrad dieselbe Bewegung: eine Rille pro Jahr.
    --------------------------------------------------------------------- */
 
-const dialSvg = $('dial');
-const CX = 200, CY = 200;
-const SVG_NS = 'http://www.w3.org/2000/svg';
-let knobEl, yearTextEl, eraTextEl;
+const tunerEl  = $('tuner');
+const canvas   = $('scale');
+const ctx      = canvas.getContext('2d');
+const wheelEl  = $('wheel');
+const cssVar   = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
-function svgEl(tag, attrs, parent) {
-  const el = document.createElementNS(SVG_NS, tag);
-  for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, v);
-  if (parent) parent.append(el);
-  return el;
+let canvasW = 0, canvasH = 0;
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  canvasW = canvas.clientWidth;
+  canvasH = canvas.clientHeight;
+  canvas.width = Math.round(canvasW * dpr);
+  canvas.height = Math.round(canvasH * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawScale();
 }
 
-/* Winkel in Grad, 0° = oben, im Uhrzeigersinn */
-function polar(angleDeg, r) {
-  const a = (angleDeg * Math.PI) / 180;
-  return [CX + r * Math.sin(a), CY - r * Math.cos(a)];
-}
+function drawScale() {
+  if (!canvasW) return;
+  ctx.clearRect(0, 0, canvasW, canvasH);
 
-const yearToAngle = (year) => -SWEEP / 2 + ((year - YEAR_MIN) / (YEAR_MAX - YEAR_MIN)) * SWEEP;
+  const ink = cssVar('--ink');
+  const muted = cssVar('--muted');
+  const cx = canvasW / 2;
+  const halfYears = cx / PPY;
+  const from = Math.max(YEAR_MIN, Math.floor(state.yearFloat - halfYears) - 1);
+  const to   = Math.min(YEAR_MAX, Math.ceil(state.yearFloat + halfYears) + 1);
 
-function buildDial() {
-  /* Farbverlauf für den Drehknopf */
-  const defs = svgEl('defs', {}, dialSvg);
-  const grad = svgEl('radialGradient', { id: 'knobGrad', cx: '35%', cy: '30%', r: '80%' }, defs);
-  svgEl('stop', { offset: '0%',   'stop-color': '#ecd08e' }, grad);
-  svgEl('stop', { offset: '60%',  'stop-color': '#b8913f' }, grad);
-  svgEl('stop', { offset: '100%', 'stop-color': '#6f5120' }, grad);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '13px system-ui, -apple-system, "Segoe UI", sans-serif';
+  ctx.lineWidth = 1;
 
-  /* Zifferblatt */
-  svgEl('circle', { cx: CX, cy: CY, r: 198, fill: '#14110f', stroke: '#6f5120', 'stroke-width': 3 }, dialSvg);
+  for (let y = from; y <= to; y++) {
+    const x = Math.round(cx + (y - state.yearFloat) * PPY) + 0.5;
+    let len = 12, color = muted;
+    if (y % 5 === 0)  len = 22;
+    if (y % 10 === 0) { len = 34; color = ink; }
 
-  /* Skala: Striche für jedes Jahr, längere für 5er, 10er und 25er */
-  for (let y = YEAR_MIN; y <= YEAR_MAX; y++) {
-    const a = yearToAngle(y);
-    let len = 6, width = 1, color = '#7d7467';
-    if (y % 5 === 0)  { len = 10; color = '#b3a994'; }
-    if (y % 10 === 0) { len = 16; width = 1.5; color = '#e0d6bf'; }
-    if (y % 25 === 0) { len = 22; width = 2.5; color = '#c9a35a'; }
-    const [x1, y1] = polar(a, 192);
-    const [x2, y2] = polar(a, 192 - len);
-    svgEl('line', { x1, y1, x2, y2, stroke: color, 'stroke-width': width, 'stroke-linecap': 'round' }, dialSvg);
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x, 36);
+    ctx.lineTo(x, 36 + len);
+    ctx.stroke();
 
-    if (y % 25 === 0) {
-      const [tx, ty] = polar(a, 152);
-      const label = svgEl('text', {
-        x: tx, y: ty, 'text-anchor': 'middle', 'dominant-baseline': 'middle',
-        fill: '#f4ecd8', 'font-size': 15, 'font-family': 'Georgia, serif',
-      }, dialSvg);
-      label.textContent = y;
+    if (y % 10 === 0) {
+      ctx.fillStyle = ink;
+      ctx.fillText(String(y), x, 16);
     }
   }
-
-  /* Drehknopf (rotiert) */
-  knobEl = svgEl('g', { class: 'knob' }, dialSvg);
-  svgEl('circle', { cx: CX, cy: CY, r: 112, fill: 'url(#knobGrad)', stroke: '#4a3615', 'stroke-width': 3 }, knobEl);
-
-  for (let i = 0; i < 48; i++) {               // Rändelung am Rand
-    const [x1, y1] = polar(i * 7.5, 100);
-    const [x2, y2] = polar(i * 7.5, 111);
-    svgEl('line', { x1, y1, x2, y2, stroke: 'rgba(0,0,0,.45)', 'stroke-width': 2 }, knobEl);
-  }
-
-  const [px1, py1] = polar(0, 68);              // Markierungsstrich
-  const [px2, py2] = polar(0, 100);
-  svgEl('line', { x1: px1, y1: py1, x2: px2, y2: py2, stroke: '#2b2118', 'stroke-width': 5, 'stroke-linecap': 'round' }, knobEl);
-
-  svgEl('polygon', {                            // Zeiger zur Skala hin
-    points: `${CX},${CY - 143} ${CX - 6},${CY - 124} ${CX + 6},${CY - 124}`,
-    fill: '#c9a35a', stroke: '#4a3615', 'stroke-width': 1,
-  }, knobEl);
-
-  /* Mittelkappe mit Jahreszahl (rotiert nicht) */
-  svgEl('circle', { cx: CX, cy: CY, r: 64, fill: '#1d1b19', stroke: '#c9a35a', 'stroke-width': 2 }, dialSvg);
-  yearTextEl = svgEl('text', {
-    x: CX, y: CY, 'text-anchor': 'middle', 'dominant-baseline': 'central',
-    fill: '#f4ecd8', 'font-size': 44, 'font-weight': 700, 'font-family': 'Georgia, serif',
-  }, dialSvg);
-
-  /* Währungsname unten in der Lücke der Skala */
-  eraTextEl = svgEl('text', {
-    x: CX, y: 352, 'text-anchor': 'middle',
-    fill: '#c9a35a', 'font-size': 15, 'font-family': 'system-ui, sans-serif',
-  }, dialSvg);
-
-  bindDialEvents();
 }
 
-function pointerInfo(e) {
-  const r = dialSvg.getBoundingClientRect();
-  const dx = e.clientX - (r.left + r.width / 2);
-  const dy = e.clientY - (r.top + r.height / 2);
-  return { angle: (Math.atan2(dx, -dy) * 180) / Math.PI, dist: Math.hypot(dx, dy), size: r.width };
-}
-
-function bindDialEvents() {
-  let drag = null;
-
-  dialSvg.addEventListener('pointerdown', (e) => {
-    const info = pointerInfo(e);
-    dialSvg.setPointerCapture(e.pointerId);
-    drag = { last: info.angle };
-    document.body.classList.add('dragging');
-    dialSvg.focus({ preventScroll: true });
-  });
-
-  dialSvg.addEventListener('pointermove', (e) => {
-    if (!drag) return;
-    const info = pointerInfo(e);
-    if (info.dist < info.size * 0.08) return;   // zu nah an der Mitte: Winkel instabil
-    let delta = info.angle - drag.last;
-    if (delta > 180) delta -= 360;
-    if (delta < -180) delta += 360;
-    drag.last = info.angle;
-    setYear(state.yearFloat + (delta / SWEEP) * (YEAR_MAX - YEAR_MIN));
-  });
-
-  const endDrag = () => {
-    if (!drag) return;
-    drag = null;
-    document.body.classList.remove('dragging');
-    setYear(Math.round(state.yearFloat));       // auf ganzes Jahr einrasten
-  };
-  dialSvg.addEventListener('pointerup', endDrag);
-  dialSvg.addEventListener('pointercancel', endDrag);
-
-  /* Mausrad: nach unten = später */
-  let wheelAcc = 0;
-  dialSvg.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    wheelAcc += e.deltaY;
-    const steps = Math.trunc(wheelAcc / 40);
-    if (steps !== 0) {
-      wheelAcc -= steps * 40;
-      setYear(getYear() + steps * (e.shiftKey ? 10 : 1));
-    }
-  }, { passive: false });
-
-  /* Tastatur */
-  dialSvg.addEventListener('keydown', (e) => {
-    const keys = {
-      ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1, PageUp: 10, PageDown: -10,
-    };
-    if (e.key in keys) { e.preventDefault(); setYear(getYear() + keys[e.key]); }
-    if (e.key === 'Home') { e.preventDefault(); setYear(YEAR_MIN); }
-    if (e.key === 'End')  { e.preventDefault(); setYear(YEAR_MAX); }
-  });
-}
-
-
-/* ---------------------------------------------------------------------
-   5. ZEITSTRAHL
-   --------------------------------------------------------------------- */
-
-const trackEl  = $('track');
-const markerEl = $('marker');
-
-function buildTimeline() {
-  const span = YEAR_MAX - YEAR_MIN;
-
-  ERAS.forEach((era) => {
-    const band = makeEl('div', 'band');
-    band.style.flex = `${era.to - era.from + 1} 0 0`;
-    const long = makeEl('span', 'long');  long.textContent = era.name;
-    const short = makeEl('span', 'short'); short.textContent = era.symbol;
-    band.append(long, short);
-    $('bands').append(band);
-  });
-
-  for (let y = YEAR_MIN; y <= YEAR_MAX; y += 25) {
-    const tick = makeEl('span', 'tick');
-    tick.style.left = `${((y - YEAR_MIN) / span) * 100}%`;
-    tick.textContent = y;
-    $('ticks').append(tick);
-  }
-
-  const yearFromPointer = (e) => {
-    const r = trackEl.getBoundingClientRect();
-    const t = clamp((e.clientX - r.left) / r.width, 0, 1);
-    return Math.round(YEAR_MIN + t * span);
-  };
-
-  let dragging = false;
-  trackEl.addEventListener('pointerdown', (e) => {
-    trackEl.setPointerCapture(e.pointerId);
-    dragging = true;
-    setYear(yearFromPointer(e));
-  });
-  trackEl.addEventListener('pointermove', (e) => {
-    if (!dragging) return;
-    document.body.classList.add('dragging');
-    setYear(yearFromPointer(e));
-  });
-  const end = () => { dragging = false; document.body.classList.remove('dragging'); };
-  trackEl.addEventListener('pointerup', end);
-  trackEl.addEventListener('pointercancel', end);
-}
-
-
-/* ---------------------------------------------------------------------
-   JAHR SETZEN – zentrale Funktion, aktualisiert alles
-   --------------------------------------------------------------------- */
-
+/* Jahr setzen – zentrale Funktion, aktualisiert alles */
 function setYear(value) {
   state.yearFloat = clamp(value, YEAR_MIN, YEAR_MAX);
 
-  /* Rad und Zeitstrahl bewegen sich fließend mit */
-  knobEl.style.transform = `rotate(${yearToAngle(state.yearFloat)}deg)`;
-  markerEl.style.left = `${((state.yearFloat - YEAR_MIN) / (YEAR_MAX - YEAR_MIN)) * 100}%`;
+  drawScale();
+  wheelEl.style.backgroundPosition = `0 0, ${-state.yearFloat * PPY}px 0`;
 
-  /* Texte und Preise nur bei Wechsel des ganzen Jahres */
   const year = getYear();
   if (year !== state.shownYear) {
     state.shownYear = year;
-    yearTextEl.textContent = year;
-    eraTextEl.textContent = eraOf(year).name;
-    dialSvg.setAttribute('aria-valuenow', year);
+    $('year').textContent = year;
+    $('era').textContent = eraOf(year).name;
+    tunerEl.setAttribute('aria-valuenow', year);
     updatePrices();
   }
 }
@@ -396,9 +246,121 @@ function updatePrices() {
   });
 }
 
+/* Animationsschleife: Schwung nach dem Loslassen, danach sanft auf ein ganzes Jahr einrasten */
+let raf = null;
+let drag = null;
+
+function startLoop() {
+  if (!raf) raf = requestAnimationFrame(loop);
+}
+
+function loop() {
+  raf = null;
+  if (drag) return;
+
+  if (reduceMotion) {
+    setYear(state.target ?? Math.round(state.yearFloat));
+    state.target = null;
+    state.velocity = 0;
+    return;
+  }
+
+  if (Math.abs(state.velocity) > 0.015) {            // Schwung
+    setYear(state.yearFloat + state.velocity);
+    state.velocity *= 0.94;
+    if (state.yearFloat <= YEAR_MIN || state.yearFloat >= YEAR_MAX) state.velocity = 0;
+    state.target = null;
+    startLoop();
+    return;
+  }
+  state.velocity = 0;
+
+  const target = state.target ?? Math.round(state.yearFloat);   // Einrasten
+  const diff = target - state.yearFloat;
+  if (Math.abs(diff) < 0.004) {
+    setYear(target);
+    state.target = null;
+    return;
+  }
+  setYear(state.yearFloat + diff * 0.22);
+  startLoop();
+}
+
+function glideBy(years) {
+  const base = state.target ?? getYear();
+  state.target = clamp(base + years, YEAR_MIN, YEAR_MAX);
+  state.velocity = 0;
+  startLoop();
+}
+
+function bindTunerEvents() {
+  /* Ziehen: Skala folgt dem Finger. Kurzer Klick: zum angeklickten Jahr gleiten. */
+  tunerEl.addEventListener('pointerdown', (e) => {
+    tunerEl.setPointerCapture(e.pointerId);
+    drag = { x: e.clientX, t: performance.now(), moved: 0 };
+    state.velocity = 0;
+    state.target = null;
+    document.body.classList.add('dragging');
+    tunerEl.focus({ preventScroll: true });
+  });
+
+  tunerEl.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const now = performance.now();
+    const dx = e.clientX - drag.x;
+    const dYears = -dx / PPY;                         // Skala nach links ziehen = spätere Jahre
+    const dt = Math.max(1, now - drag.t);
+    drag.x = e.clientX;
+    drag.t = now;
+    drag.moved += Math.abs(dx);
+    state.velocity = 0.6 * state.velocity + 0.4 * ((dYears / dt) * 16.7);
+    setYear(state.yearFloat + dYears);
+  });
+
+  const release = (e, cancelled) => {
+    if (!drag) return;
+    const wasClick = !cancelled && drag.moved < 4;
+    if (performance.now() - drag.t > 80) state.velocity = 0;   // vor dem Loslassen angehalten
+    drag = null;
+    document.body.classList.remove('dragging');
+
+    if (wasClick) {
+      const r = tunerEl.getBoundingClientRect();
+      const offsetYears = (e.clientX - (r.left + r.width / 2)) / PPY;
+      state.target = clamp(Math.round(state.yearFloat + offsetYears), YEAR_MIN, YEAR_MAX);
+      state.velocity = 0;
+    }
+    startLoop();
+  };
+  tunerEl.addEventListener('pointerup', (e) => release(e, false));
+  tunerEl.addEventListener('pointercancel', (e) => release(e, true));
+
+  /* Mausrad / Trackpad: nach unten oder rechts = später */
+  let wheelAcc = 0;
+  tunerEl.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    wheelAcc += Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    const steps = Math.trunc(wheelAcc / 30);
+    if (steps !== 0) {
+      wheelAcc -= steps * 30;
+      glideBy(steps * (e.shiftKey ? 10 : 1));
+    }
+  }, { passive: false });
+
+  /* Tastatur */
+  tunerEl.addEventListener('keydown', (e) => {
+    const keys = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1, PageUp: 10, PageDown: -10 };
+    if (e.key in keys) { e.preventDefault(); glideBy(keys[e.key]); }
+    if (e.key === 'Home') { e.preventDefault(); state.target = YEAR_MIN; state.velocity = 0; startLoop(); }
+    if (e.key === 'End')  { e.preventDefault(); state.target = YEAR_MAX; state.velocity = 0; startLoop(); }
+  });
+
+  new ResizeObserver(resizeCanvas).observe(canvas);
+}
+
 
 /* ---------------------------------------------------------------------
-   6. LADEN & HÄNDE
+   5. LADEN & HÄNDE
    --------------------------------------------------------------------- */
 
 const shelfEl   = $('shelf');
@@ -445,13 +407,13 @@ function renderHeld() {
   if (!state.held) {
     heldEl.replaceChildren();
     heldEl.setAttribute('aria-label', 'Rechte Hand ist leer');
-    captionEl.textContent = 'Die Hand ist leer – nimm dir etwas aus dem Regal.';
+    captionEl.textContent = 'Hand leer';
     return;
   }
   const product = findProduct(state.held.shopId, state.held.id);
   heldEl.replaceChildren(createStage(state.held.shopId, product));
   heldEl.setAttribute('aria-label', `${product.name} zurück ins Regal legen`);
-  captionEl.textContent = `In der Hand: ${product.name} (${product.unit}) – anklicken zum Zurücklegen`;
+  captionEl.textContent = `${product.name} · ${product.unit}`;
 }
 
 /* Kleine Flugbahn des Produkts vom Regal in die Hand */
@@ -471,10 +433,10 @@ function flyTo(fromEl, toEl, done) {
   const anim = ghost.animate(
     [
       { transform: 'translate(0,0) scale(1)' },
-      { transform: `translate(${dx * 0.5}px,${dy * 0.5 - 40}px) scale(1.15)`, offset: 0.5 },
+      { transform: `translate(${dx * 0.5}px,${dy * 0.5 - 40}px) scale(1.12)`, offset: 0.5 },
       { transform: `translate(${dx}px,${dy}px) scale(1)` },
     ],
-    { duration: 450, easing: 'cubic-bezier(.3,.7,.3,1)' }
+    { duration: 420, easing: 'cubic-bezier(.3,.7,.3,1)' }
   );
   anim.onfinish = () => { ghost.remove(); done(); };
 }
@@ -530,18 +492,18 @@ window.enterShop = enterShop;   // zum Ausprobieren in der Browser-Konsole
 
 
 /* ---------------------------------------------------------------------
-   7. START
+   6. START
    --------------------------------------------------------------------- */
 
 function init() {
   $('handLeftArt').append(makeImage(HAND_LEFT_IMG, 'Linke Hand', '✋'));
   $('handRightArt').append(makeImage(HAND_RIGHT_IMG, 'Rechte Hand', '✋'));
 
-  buildDial();
-  buildTimeline();
   renderShelf();
   renderHeld();
   bindShopEvents();
+  bindTunerEvents();
+  resizeCanvas();
   setYear(START_YEAR);
 }
 
