@@ -6,23 +6,19 @@
 <title>Was kostete das damals?</title>
 <style>
   /* ===================================================================
-     EINSTELLUNGEN – hier kannst du Größen und Positionen anpassen
+     EINSTELLUNGEN
      =================================================================== */
   :root {
-    --bg: #1d1b19;
-    --paper: #f4ecd8;
-    --brass: #c9a35a;
-    --brass-dark: #8a6a2c;
-    --wood: #8b5e34;
-    --wood-dark: #5e3d20;
-    --sticker: #ffe45c;
+    --bg: #f5f4f0;
+    --ink: #141414;
+    --muted: #8a8a85;
+    --line: #dcdad3;
+    --accent: #e5322d;
 
-    /* Größe der Produkte (im Regal und in der Hand) */
-    --item-size: clamp(76px, 11vw, 104px);
+    /* Größe der Produkte (Regal und Hand) */
+    --item-size: clamp(72px, 10vw, 100px);
 
-    /* Wo das Produkt in der rechten Hand sitzt.
-       Passe diesen Wert an, sobald dein handrechts.png eingebaut ist:
-       größerer Wert = Produkt sitzt weiter oben. */
+    /* Wo das Produkt in der rechten Hand sitzt (größer = weiter oben) */
     --held-bottom: 48%;
   }
 
@@ -31,93 +27,100 @@
 
   body {
     min-height: 100vh;
-    color: var(--paper);
-    background: radial-gradient(ellipse at 50% 0%, #3a3228 0%, var(--bg) 62%);
-    font-family: Georgia, "Times New Roman", serif;
-    padding: 12px 16px 24px;
+    padding: 28px 16px 32px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
 
-  main { width: 100%; max-width: 1100px; margin: 0 auto; }
+  main { width: 100%; max-width: 1000px; margin: 0 auto; }
 
-  header.top { text-align: center; margin-bottom: 4px; }
-  header.top h1 {
-    margin: 0;
-    font-size: clamp(20px, 3vw, 28px);
-    letter-spacing: .03em;
-    color: var(--brass);
+  .title {
+    margin: 0 0 28px;
+    text-align: center;
+    font-size: 12px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--muted);
   }
-  header.top p { margin: 2px 0 0; font-size: 14px; opacity: .7; }
 
-  /* ---------------- Zeitrad ---------------- */
-  .dial-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-
-  #dial {
-    width: min(340px, 90vw, 44vh);
-    height: auto;
-    touch-action: none;
+  /* ---------------- Tuner ---------------- */
+  .tuner {
+    width: min(720px, 100%);
+    margin: 0 auto;
+    outline: none;
     cursor: grab;
+    touch-action: pan-y;
     user-select: none;
     -webkit-user-select: none;
-    outline: none;
-    border-radius: 50%;
   }
-  #dial:active { cursor: grabbing; }
-  #dial:focus-visible { outline: 2px solid var(--brass); outline-offset: 4px; }
+  .tuner:focus-visible { outline: 2px solid var(--accent); outline-offset: 10px; border-radius: 4px; }
+  body.dragging .tuner { cursor: grabbing; }
 
-  .knob { transform-origin: 200px 200px; transition: transform .25s ease-out; }
-  body.dragging .knob,
-  body.dragging .marker { transition: none; }
-
-  .hint { margin: 0; font: 12px system-ui, sans-serif; opacity: .55; text-align: center; }
-
-  /* ---------------- Zeitstrahl ---------------- */
-  .timeline { width: min(780px, 100%); margin: 10px auto 0; padding: 0 22px; }
-
-  .track { position: relative; height: 30px; cursor: pointer; touch-action: none; }
-  .bands { display: flex; height: 100%; border-radius: 6px; overflow: hidden; border: 1px solid var(--brass-dark); }
-  .band {
-    display: grid; place-items: center;
-    font: 600 11px/1 system-ui, sans-serif;
-    color: rgba(244, 236, 216, .75);
-    white-space: nowrap; overflow: hidden;
-    background: #2e2a25;
+  .readout { text-align: center; }
+  .year {
+    display: block;
+    font-size: clamp(56px, 11vw, 96px);
+    font-weight: 200;
+    line-height: 1;
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
   }
-  .band:nth-child(even) { background: #3a342d; }
-  .band .short { display: none; }
+  .era {
+    display: block;
+    margin-top: 8px;
+    font-size: 12px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
 
-  .marker {
-    position: absolute; top: -5px; bottom: -5px; width: 3px;
-    background: var(--brass);
-    transform: translateX(-50%);
-    box-shadow: 0 0 8px rgba(201, 163, 90, .8);
-    transition: left .25s ease-out;
+  .dial { position: relative; margin-top: 22px; }
+
+  #scale {
+    display: block;
+    width: 100%;
+    height: 76px;
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent);
+            mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent);
+  }
+
+  /* Zeiger */
+  .needle {
+    position: absolute; left: 50%; top: 0; bottom: 0;
+    width: 2px; margin-left: -1px;
+    background: var(--accent);
     pointer-events: none;
   }
-  .marker::before {
-    content: ""; position: absolute; top: -6px; left: 50%;
-    transform: translateX(-50%);
-    border: 6px solid transparent; border-top-color: var(--brass); border-bottom: 0;
+  .needle::before {
+    content: ""; position: absolute; top: -4px; left: 50%;
+    width: 8px; height: 8px; margin-left: -4px;
+    border-radius: 50%; background: var(--accent);
   }
 
-  .ticks { position: relative; height: 22px; }
-  .tick {
-    position: absolute; top: 0; transform: translateX(-50%);
-    padding-top: 6px;
-    font: 11px system-ui, sans-serif; opacity: .7;
-  }
-  .tick::before {
-    content: ""; position: absolute; top: 0; left: 50%;
-    width: 1px; height: 5px; background: var(--paper);
+  /* Rändelrad, frontal gesehen: eine Rille pro Jahr */
+  .wheel {
+    height: 26px;
+    margin-top: 8px;
+    border-radius: 13px;
+    background:
+      linear-gradient(to right,
+        rgba(20, 20, 20, .30) 0%, rgba(20, 20, 20, 0) 24%,
+        rgba(255, 255, 255, .35) 50%,
+        rgba(20, 20, 20, 0) 76%, rgba(20, 20, 20, .30) 100%),
+      linear-gradient(to right, #c4c1b8 0 2px, #e8e6df 2px) 0 0 / 14px 100% repeat-x;
   }
 
-  /* ---------------- Bühne: Hand – Laden – Hand ---------------- */
-  .stage-wrap {
+  .hint { margin: 16px 0 0; text-align: center; font-size: 12px; color: var(--muted); }
+
+  /* ---------------- Bühne: Hand – Regal – Hand ---------------- */
+  .stage {
     display: grid;
-    grid-template-columns: minmax(90px, 1fr) minmax(0, 3fr) minmax(90px, 1fr);
+    grid-template-columns: minmax(80px, 1fr) minmax(0, 3fr) minmax(80px, 1fr);
     grid-template-areas: "left shop right";
-    gap: 12px;
+    gap: 16px;
     align-items: end;
-    margin-top: 18px;
+    margin-top: 56px;
   }
   .hand-left  { grid-area: left; }
   .shop       { grid-area: shop; }
@@ -125,13 +128,12 @@
 
   .hand {
     position: relative;
-    min-height: 220px;
+    min-height: 200px;
     display: flex; flex-direction: column;
     align-items: center; justify-content: flex-end;
   }
-  .hand-art { width: 100%; display: flex; justify-content: center; }
-  .hand-art img { width: 100%; max-width: 240px; height: auto; display: block; }
-  .hand-art .emoji { font-size: 150px; line-height: 1; }
+  .hand-art img { display: block; width: 100%; max-width: 220px; height: auto; }
+  .hand-art .emoji { font-size: 110px; line-height: 1; opacity: .25; filter: grayscale(1); }
   .hand-left .hand-art .emoji { transform: scaleX(-1); }
 
   .held {
@@ -145,96 +147,75 @@
   }
   .held:hover { transform: translateX(-50%) translateY(-3px); }
   .held:empty { pointer-events: none; }
-  .held-caption { margin: 6px 0 0; font: italic 12px system-ui, sans-serif; opacity: .65; text-align: center; min-height: 2.4em; }
+  .held-caption { margin: 8px 0 0; min-height: 2.4em; font-size: 12px; text-align: center; color: var(--muted); }
 
-  /* ---------------- Laden / Regal ---------------- */
-  .shop {
-    background: linear-gradient(#3a342e, #2a2622);
-    border: 6px solid var(--wood-dark);
-    border-radius: 10px;
-    padding: 10px 10px 14px;
+  .shop-name {
+    margin: 0 0 12px;
+    text-align: center;
+    font-size: 12px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--muted);
   }
-  .shop-sign {
-    width: fit-content; margin: 0 auto 10px;
-    padding: 6px 22px;
-    background: var(--wood-dark);
-    border: 2px solid var(--brass-dark);
-    border-radius: 6px;
-    color: var(--brass);
-    font-size: 17px; letter-spacing: .05em;
-  }
-
   .shelf {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-    gap: 0;
-    background: rgba(0, 0, 0, .25);
-    border-radius: 6px;
-    padding: 14px 8px 0;
+    grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+    gap: 8px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
   }
 
   .product {
     appearance: none; background: none; border: 0;
     color: inherit; font: inherit; cursor: pointer;
-    display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
-    gap: 6px;
-    padding: 8px 4px 8px;
-    border-bottom: 12px solid var(--wood);
-    box-shadow: 0 6px 8px -6px rgba(0, 0, 0, .6);
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    padding: 8px 4px;
   }
-  .product:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
-  .product:hover .stage { transform: translateY(-4px) scale(1.04); }
+  .product:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  .product:hover .stage { transform: translateY(-3px); }
   .product.taken { cursor: default; }
   .product.taken .stage { visibility: hidden; }
-  .product.taken .product-label { opacity: .4; }
+  .product.taken .product-label { opacity: .35; }
 
-  .product-label { font: 600 13px/1.2 system-ui, sans-serif; text-align: center; }
-  .product-label small { display: block; font-weight: 400; font-size: 11px; opacity: .7; }
+  .product-label { font-size: 13px; line-height: 1.3; text-align: center; }
+  .product-label small { display: block; font-size: 11px; color: var(--muted); }
 
-  /* "stage" = Bild + Preis-Sticker, wird im Regal und in der Hand benutzt */
+  /* Bild + Preis-Sticker */
   .stage {
     position: relative;
     width: var(--item-size); height: var(--item-size);
     display: grid; place-items: center;
     transition: transform .15s;
   }
-  .stage img {
-    max-width: 100%; max-height: 100%; object-fit: contain;
-    filter: drop-shadow(0 4px 4px rgba(0, 0, 0, .45));
-    pointer-events: none;
-  }
-  .stage .emoji { font-size: calc(var(--item-size) * .7); line-height: 1; }
+  .stage img { max-width: 100%; max-height: 100%; object-fit: contain; pointer-events: none; }
+  .stage .emoji { font-size: calc(var(--item-size) * .66); line-height: 1; }
 
   .sticker {
-    position: absolute; right: -6px; bottom: 2px;
+    position: absolute; right: -8px; bottom: 0;
     padding: 4px 7px;
-    background: var(--sticker); color: #2b2118;
-    font: 700 13px/1 system-ui, sans-serif;
-    border-radius: 4px;
-    transform: rotate(-7deg);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, .5), inset 0 0 0 1px rgba(0, 0, 0, .08);
+    background: var(--accent); color: #fff;
+    font-size: 12px; font-weight: 600; line-height: 1;
+    font-variant-numeric: tabular-nums;
+    border-radius: 3px;
+    transform: rotate(-6deg);
     white-space: nowrap;
     pointer-events: none;
   }
-  .sticker.pop { animation: pop .18s ease-out; }
+  .sticker.pop { animation: pop .16s ease-out; }
   @keyframes pop {
-    from { transform: rotate(-7deg) scale(1.25); }
-    to   { transform: rotate(-7deg) scale(1); }
+    from { transform: rotate(-6deg) scale(1.2); }
+    to   { transform: rotate(-6deg) scale(1); }
   }
 
-  footer { margin-top: 22px; text-align: center; font: 12px system-ui, sans-serif; opacity: .45; }
+  footer { margin-top: 40px; text-align: center; font-size: 11px; color: var(--muted); opacity: .8; }
 
-  /* ---------------- Schmale Bildschirme ---------------- */
   @media (max-width: 760px) {
-    .stage-wrap {
+    .stage {
       grid-template-columns: 1fr 1fr;
       grid-template-areas: "shop shop" "left right";
+      margin-top: 40px;
     }
-    .hand-art .emoji { font-size: 110px; }
-  }
-  @media (max-width: 560px) {
-    .band .long { display: none; }
-    .band .short { display: inline; }
+    .hand-art .emoji { font-size: 84px; }
   }
   @media (prefers-reduced-motion: reduce) {
     * { transition: none !important; animation: none !important; }
@@ -243,36 +224,32 @@
 </head>
 <body>
 
-<header class="top">
-  <h1>Was kostete das damals?</h1>
-  <p>Dreh am Rad und reise durch die Zeit.</p>
-</header>
-
 <main>
-  <!-- Das Rad -->
-  <section class="dial-wrap" aria-label="Zeitrad">
-    <svg id="dial" viewBox="0 0 400 400" role="slider" tabindex="0"
-         aria-label="Jahr wählen" aria-valuemin="1900" aria-valuemax="2025" aria-valuenow="1960"></svg>
-    <p class="hint">Am Rad ziehen · Mausrad · Pfeiltasten</p>
-  </section>
+  <p class="title">Was kostete das damals?</p>
 
-  <!-- Der Zeitstrahl -->
-  <section class="timeline" aria-label="Zeitstrahl">
-    <div class="track" id="track">
-      <div class="bands" id="bands"></div>
-      <div class="marker" id="marker"></div>
+  <!-- Tuner: Skala läuft unter dem festen Zeiger durch -->
+  <section class="tuner" id="tuner" role="slider" tabindex="0"
+           aria-label="Jahr einstellen" aria-valuemin="1900" aria-valuemax="2025" aria-valuenow="1960">
+    <div class="readout">
+      <span class="year" id="year">1960</span>
+      <span class="era" id="era"></span>
     </div>
-    <div class="ticks" id="ticks"></div>
+    <div class="dial">
+      <canvas id="scale"></canvas>
+      <div class="wheel" id="wheel"></div>
+      <div class="needle"></div>
+    </div>
   </section>
+  <p class="hint">Ziehen · Mausrad · Pfeiltasten</p>
 
-  <!-- Hand links – Laden – Hand rechts -->
-  <section class="stage-wrap">
+  <!-- Hand links – Regal – Hand rechts -->
+  <section class="stage">
     <aside class="hand hand-left" aria-label="Linke Hand">
       <div class="hand-art" id="handLeftArt"></div>
     </aside>
 
     <section class="shop" aria-label="Laden">
-      <div class="shop-sign" id="shopName"></div>
+      <p class="shop-name" id="shopName"></p>
       <div class="shelf" id="shelf"></div>
     </section>
 
@@ -284,9 +261,7 @@
   </section>
 </main>
 
-<footer>
-  Die Preise sind Beispielwerte (Platzhalter) und müssen in script.js durch recherchierte Daten ersetzt werden.
-</footer>
+<footer>Preise sind Platzhalter – bitte in script.js durch recherchierte Daten ersetzen.</footer>
 
 <script src="script.js"></script>
 </body>
