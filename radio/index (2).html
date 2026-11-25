@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radio</title>
+<style>
+  :root {
+    --bg: #1b1815;
+    --body: #2a2420;
+    --body-edge: #3a322b;
+    --cream: #e9dfc9;
+    --cream-dim: #a89c82;
+    --accent: #d9482b;
+    --brass: #b8934f;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--cream);
+    font-family: Georgia, "Times New Roman", serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6vh 16px 10vh;
+  }
+
+  /* ---------- Radiogehäuse ---------- */
+  .radio {
+    width: min(520px, 100%);
+    background: var(--body);
+    border: 2px solid var(--body-edge);
+    border-radius: 28px;
+    padding: 28px 28px 34px;
+    box-shadow: 0 20px 50px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05);
+  }
+
+  /* ---------- Skala ---------- */
+  .dial {
+    position: relative;
+    height: 96px;
+    background: #14110e;
+    border: 2px solid var(--brass);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 34px;
+  }
+  .dial .ticks {
+    position: absolute; inset: 0;
+  }
+  .dial .tick {
+    position: absolute;
+    bottom: 0;
+    width: 1px;
+    background: var(--cream-dim);
+    opacity: .5;
+  }
+  .dial .tick.major { opacity: .9; }
+  .dial .label {
+    position: absolute;
+    top: 14px;
+    transform: translateX(-50%);
+    font-size: 13px;
+    letter-spacing: .08em;
+    color: var(--cream-dim);
+    transition: color .3s;
+  }
+  .dial .label.active { color: var(--cream); }
+  .dial .needle {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+    transform: translateX(-1px);
+  }
+
+  /* ---------- Regler ---------- */
+  .knob-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+  .knob {
+    width: 150px; height: 150px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 35% 30%, #5a4d40, #2b231c 70%);
+    border: 3px solid var(--brass);
+    box-shadow: 0 8px 18px rgba(0,0,0,.55), inset 0 2px 4px rgba(255,255,255,.12);
+    position: relative;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    outline: none;
+  }
+  .knob:active { cursor: grabbing; }
+  .knob:focus-visible { box-shadow: 0 0 0 3px var(--accent); }
+  .knob::before { /* Markierungsstrich */
+    content: "";
+    position: absolute;
+    top: 10px; left: 50%;
+    width: 4px; height: 28px;
+    margin-left: -2px;
+    background: var(--cream);
+    border-radius: 2px;
+  }
+  .hint {
+    font-size: 12px;
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    color: var(--cream-dim);
+  }
+
+  /* ---------- Textbereich ---------- */
+  .programm {
+    width: min(520px, 100%);
+    margin-top: 40px;
+    text-align: left;
+    transition: opacity .35s;
+  }
+  .programm.fade { opacity: 0; }
+  .programm h2 {
+    font-weight: normal;
+    font-size: 28px;
+    letter-spacing: .04em;
+    margin: 0 0 12px;
+    border-bottom: 1px solid var(--brass);
+    padding-bottom: 10px;
+  }
+  .programm p {
+    margin: 0;
+    line-height: 1.7;
+    color: var(--cream-dim);
+    white-space: pre-line;
+  }
+
+  /* ---------- Start-Overlay ---------- */
+  #start {
+    position: fixed; inset: 0;
+    background: rgba(20,17,14,.94);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 10;
+  }
+  #start button {
+    background: none;
+    color: var(--cream);
+    border: 2px solid var(--brass);
+    border-radius: 40px;
+    padding: 16px 38px;
+    font: inherit;
+    font-size: 18px;
+    letter-spacing: .12em;
+    cursor: pointer;
+    transition: background .2s, color .2s;
+  }
+  #start button:hover { background: var(--brass); color: var(--bg); }
+  #start button:disabled { opacity: .5; cursor: default; }
+</style>
+</head>
+<body>
+
+<div id="start">
+  <button id="startBtn">Radio einschalten</button>
+</div>
+
+<div class="radio">
+  <div class="dial" id="dial">
+    <div class="ticks" id="ticks"></div>
+    <div class="needle" id="needle"></div>
+  </div>
+
+  <div class="knob-wrap">
+    <div class="knob" id="knob" tabindex="0" role="slider"
+         aria-label="Senderwahl" aria-valuemin="1" aria-valuemax="6" aria-valuenow="1"></div>
+    <div class="hint">Zum Drehen ziehen</div>
+  </div>
+</div>
+
+<!--
+  ============================================================
+  TEXTBEREICH
+  Die Texte (Überschrift + Inhalt) für jedes Programm stehen
+  in der Datei script.js ganz oben im Block "PROGRAMM-TEXTE".
+  Hier im HTML muss nichts geändert werden.
+  ============================================================
+-->
+<section class="programm" id="programm">
+  <h2 id="programmTitel"></h2>
+  <p id="programmInhalt"></p>
+</section>
+
+<script src="script.js"></script>
+</body>
+</html>
