@@ -2,16 +2,17 @@
    PROGRAMM-TEXTE  –  HIER KANNST DU DIE TEXTE BEARBEITEN
    ---------------------------------------------------------------------
    Jeder Eintrag entspricht einem Programm (Reihenfolge = gen1 … gen6).
-     titel:  die Überschrift unter dem Regler
-     inhalt: der Fließtext (Zeilenumbrüche mit \n sind möglich)
+     frequenz: Position auf der Skala in MHz (zwischen 87.5 und 108)
+     titel:    die Überschrift auf der Texttafel
+     inhalt:   der Fließtext (Zeilenumbrüche mit \n sind möglich)
    ===================================================================== */
 const PROGRAMME = [
-  { titel: "Generation 1", inhalt: "Inhalt" },   // gen1.mp3
-  { titel: "Generation 2", inhalt: "Inhalt" },   // gen2.mp3
-  { titel: "Generation 3", inhalt: "Inhalt" },   // gen3.mp3
-  { titel: "Generation 4", inhalt: "Inhalt" },   // gen4.mp3
-  { titel: "Generation 5", inhalt: "Inhalt" },   // gen5.mp3
-  { titel: "Generation 6", inhalt: "Inhalt" },   // gen6.mp3
+  { frequenz:  89.0, titel: "Generation 1", inhalt: "Inhalt" },   // sound/gen1.mp3
+  { frequenz:  92.5, titel: "Generation 2", inhalt: "Inhalt" },   // sound/gen2.mp3
+  { frequenz:  96.0, titel: "Generation 3", inhalt: "Inhalt" },   // sound/gen3.mp3
+  { frequenz:  99.5, titel: "Generation 4", inhalt: "Inhalt" },   // sound/gen4.mp3
+  { frequenz: 103.0, titel: "Generation 5", inhalt: "Inhalt" },   // sound/gen5.mp3
+  { frequenz: 106.5, titel: "Generation 6", inhalt: "Inhalt" },   // sound/gen6.mp3
 ];
 /* ===================== ENDE DER PROGRAMM-TEXTE ===================== */
 
@@ -19,120 +20,149 @@ const PROGRAMME = [
 /* =====================================================================
    EINSTELLUNGEN
    ===================================================================== */
-const SOUND_ORDNER   = "sound";      // Ordner mit den Audiodateien
-const NOISE_DATEI    = "noise.mp3";
-const CROSSFADE_SEK  = 0.5;          // Dauer des Crossfades
+const CROSSFADE_SEK         = 0.5;   // Dauer des Crossfades
 const STOPP_VERZOEGERUNG_MS = 250;   // so lange ohne Bewegung = "Regler steht"
-const MAX_WINKEL     = 135;          // Regler dreht von -135° bis +135°
+const MAX_WINKEL            = 150;   // Regler dreht von -150° bis +150°
+const F_MIN = 87.5;                  // Skalenanfang in MHz
+const F_MAX = 108;                   // Skalenende in MHz
 
-const ANZAHL = PROGRAMME.length;
-const DATEIEN = PROGRAMME.map((_, i) => `${SOUND_ORDNER}/gen${i + 1}.mp3`);
+// Audiodateien (relativ zu index.html)
+const NOISE_PFAD = "sound/noise.mp3";
+const PFADE      = PROGRAMME.map((_, i) => `sound/gen${i + 1}.mp3`);
 
 
 /* =====================================================================
    ELEMENTE
    ===================================================================== */
-const knob       = document.getElementById("knob");
-const needle     = document.getElementById("needle");
-const ticksEl    = document.getElementById("ticks");
-const startEl    = document.getElementById("start");
-const startBtn   = document.getElementById("startBtn");
-const programmEl = document.getElementById("programm");
-const titelEl    = document.getElementById("programmTitel");
-const inhaltEl   = document.getElementById("programmInhalt");
+const $ = id => document.getElementById(id);
+const knob = $("knob"), needle = $("needle"), scaleEl = $("scale");
+const startEl = $("startBtn").parentElement, startBtn = $("startBtn");
+const lamp = $("lamp"), freqEl = $("freq"), statusEl = $("status");
+const plate = $("plate"), metaEl = $("plateMeta"),
+      titelEl = $("plateTitel"), inhaltEl = $("plateInhalt");
+
+const proz = f => ((f - F_MIN) / (F_MAX - F_MIN)) * 100;
+const fmt  = f => f.toFixed(1).replace(".", ",");
 
 
 /* =====================================================================
-   SKALA AUFBAUEN
+   SKALA AUFBAUEN (realistische FM-Skala 88–108 MHz)
    ===================================================================== */
-const labelEls = [];
+const markerEls = [];
 (function baueSkala() {
-  // Feine Striche
-  const strichAnzahl = ANZAHL * 10;
-  for (let i = 0; i <= strichAnzahl; i++) {
+  for (let f = 88; f <= 108; f += 0.5) {
+    const ganz  = Number.isInteger(f);
+    const major = f % 4 === 0;
     const t = document.createElement("div");
-    const major = i % 10 === 0;
-    t.className = "tick" + (major ? " major" : "");
-    t.style.left = (i / strichAnzahl * 100) + "%";
-    t.style.height = major ? "34px" : "18px";
-    ticksEl.appendChild(t);
+    t.className = "tick " + (major ? "major" : ganz ? "whole" : "half");
+    t.style.left = proz(f) + "%";
+    scaleEl.insertBefore(t, needle);
+    if (major) {
+      const n = document.createElement("div");
+      n.className = "num";
+      n.textContent = f;
+      n.style.left = proz(f) + "%";
+      scaleEl.insertBefore(n, needle);
+    }
   }
-  // Senderbeschriftung in der Mitte jedes Abschnitts
-  for (let i = 0; i < ANZAHL; i++) {
-    const l = document.createElement("div");
-    l.className = "label";
-    l.textContent = String(i + 1);
-    l.style.left = ((i + 0.5) / ANZAHL * 100) + "%";
-    ticksEl.appendChild(l);
-    labelEls.push(l);
-  }
+  PROGRAMME.forEach((p, i) => {
+    const s = document.createElement("div");
+    s.className = "station";
+    s.style.left = proz(p.frequenz) + "%";
+    s.innerHTML = `<i></i><span>${i + 1}</span>`;
+    scaleEl.insertBefore(s, needle);
+    markerEls.push(s);
+  });
 })();
 
 
 /* =====================================================================
-   AUDIO (Web Audio API für nahtlose Loops)
+   AUDIO
+   Einfache <audio>-Elemente mit relativen Pfaden (sound/gen1.mp3 …).
+   Alle Loops laufen stumm mit und werden nur lauter/leiser geregelt –
+   wie bei einem echten Radio, bei dem die Sender immer senden.
    ===================================================================== */
-let ctx = null;
-let noiseGain = null;
-let programmGains = [];
+let ctx = null;            // nur wenn über http(s) geöffnet (für saubere Lautstärke auch auf iOS)
+let noiseKanal = null;
+let programmKanaele = [];
 let audioBereit = false;
+const fehler = [];
 
-async function ladeBuffer(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
-  const data = await res.arrayBuffer();
-  return ctx.decodeAudioData(data);
+function meldeFehler(pfad) {
+  if (!fehler.includes(pfad)) fehler.push(pfad);
+  statusEl.textContent = "Datei nicht gefunden / nicht lesbar: " + fehler.join(", ");
 }
 
-function starteLoop(buffer) {
-  const gain = ctx.createGain();
-  gain.gain.value = 0;
-  gain.connect(ctx.destination);
-  const src = ctx.createBufferSource();
-  src.buffer = buffer;
-  src.loop = true;
-  src.connect(gain);
-  return { src, gain };
+function erstelleKanal(pfad) {
+  const el = new Audio(pfad);
+  el.loop = true;
+  el.preload = "auto";
+  el.addEventListener("error", () => meldeFehler(pfad));
+  const kanal = { el, gain: null, level: 0, anim: false };
+
+  if (ctx) {
+    try {
+      const src = ctx.createMediaElementSource(el);
+      kanal.gain = ctx.createGain();
+      kanal.gain.gain.value = 0;
+      src.connect(kanal.gain).connect(ctx.destination);
+    } catch (e) { kanal.gain = null; el.volume = 0; }
+  } else {
+    el.volume = 0;
+  }
+  return kanal;
+}
+
+function setLevel(k, v) {
+  k.level = Math.max(0, Math.min(1, v));
+  if (k.gain) k.gain.gain.value = k.level;
+  else k.el.volume = k.level;
+}
+
+// kleiner Fader für alle Kanäle
+let tickerLaeuft = false;
+function fadeTo(k, ziel, dauerSek) {
+  if (dauerSek <= 0) { k.anim = false; setLevel(k, ziel); return; }
+  k.from = k.level; k.to = ziel;
+  k.t0 = performance.now(); k.dur = dauerSek * 1000;
+  k.anim = true;
+  if (!tickerLaeuft) { tickerLaeuft = true; requestAnimationFrame(ticker); }
+}
+function ticker(now) {
+  let aktiv = false;
+  [noiseKanal, ...programmKanaele].forEach(k => {
+    if (!k || !k.anim) return;
+    const p = Math.min(1, (now - k.t0) / k.dur);
+    setLevel(k, k.from + (k.to - k.from) * p);
+    if (p >= 1) k.anim = false; else aktiv = true;
+  });
+  if (aktiv) requestAnimationFrame(ticker); else tickerLaeuft = false;
 }
 
 async function audioStarten() {
-  ctx = new (window.AudioContext || window.webkitAudioContext)();
-  await ctx.resume();
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (AC && location.protocol.startsWith("http")) {
+    ctx = new AC();
+    await ctx.resume();
+  }
+  noiseKanal = erstelleKanal(NOISE_PFAD);
+  programmKanaele = PFADE.map(erstelleKanal);
 
-  const alle = await Promise.all([NOISE_DATEI, ...DATEIEN.map(d => d)]
-    .map((d, i) => ladeBuffer(i === 0 ? `${SOUND_ORDNER}/${d}` : d)));
-
-  const noise = starteLoop(alle[0]);
-  noiseGain = noise.gain;
-
-  const loops = alle.slice(1).map(starteLoop);
-  programmGains = loops.map(l => l.gain);
-
-  // Alle Loops starten gleichzeitig und laufen stumm mit,
-  // wie bei einem echten Radio (die Sender laufen ja immer).
-  const t0 = ctx.currentTime + 0.1;
-  noise.src.start(t0);
-  loops.forEach(l => l.src.start(t0));
+  const alle = [noiseKanal, ...programmKanaele];
+  await Promise.allSettled(alle.map(k => k.el.play()));
 
   audioBereit = true;
+  lamp.classList.add("on");
   aktualisiereAudio(true);
 }
 
-function rampe(param, ziel, dauer) {
-  const jetzt = ctx.currentTime;
-  param.cancelScheduledValues(jetzt);
-  param.setValueAtTime(param.value, jetzt);
-  param.linearRampToValueAtTime(ziel, jetzt + dauer);
-}
-
-/** Setzt Lautstärken je nach Zustand (dreht / steht) */
-function aktualisiereAudio(sofortStumm = false) {
+/** Lautstärken je nach Zustand (dreht / steht) */
+function aktualisiereAudio(sofort = false) {
   if (!audioBereit) return;
-  const dauer = sofortStumm ? 0.01 : CROSSFADE_SEK;
-  rampe(noiseGain.gain, dreht ? 1 : 0, dauer);
-  programmGains.forEach((g, i) => {
-    const ziel = (!dreht && i === aktuellerSender) ? 1 : 0;
-    rampe(g.gain, ziel, dauer);
+  const d = sofort ? 0 : CROSSFADE_SEK;
+  fadeTo(noiseKanal, dreht ? 1 : 0, d);
+  programmKanaele.forEach((k, i) => {
+    fadeTo(k, (!dreht && i === aktuellerSender) ? 1 : 0, d);
   });
 }
 
@@ -140,41 +170,49 @@ function aktualisiereAudio(sofortStumm = false) {
 /* =====================================================================
    REGLER-ZUSTAND
    ===================================================================== */
-let winkel = -MAX_WINKEL + (MAX_WINKEL * 2) / (ANZAHL * 2); // Start: Mitte von Sender 1
-let aktuellerSender = senderAusWinkel();
-let angezeigterSender = -1;
-let dreht = false;
-let stoppTimer = null;
+const frequenzAusWinkel = w => F_MIN + ((w + MAX_WINKEL) / (MAX_WINKEL * 2)) * (F_MAX - F_MIN);
+const winkelAusFrequenz = f => -MAX_WINKEL + ((f - F_MIN) / (F_MAX - F_MIN)) * MAX_WINKEL * 2;
 
-function position() { return (winkel + MAX_WINKEL) / (MAX_WINKEL * 2); } // 0..1
-function senderAusWinkel() {
-  return Math.min(ANZAHL - 1, Math.floor(position() * ANZAHL));
+function naechsterSender(f) {
+  let best = 0, dist = Infinity;
+  PROGRAMME.forEach((p, i) => {
+    const d = Math.abs(p.frequenz - f);
+    if (d < dist) { dist = d; best = i; }
+  });
+  return best;
 }
 
+let winkel = winkelAusFrequenz(PROGRAMME[0].frequenz);
+let aktuellerSender = naechsterSender(frequenzAusWinkel(winkel));
+let dreht = false;
+let stoppTimer = null;
+let zeigerGedrueckt = false;
+
 function zeichne() {
+  const f = frequenzAusWinkel(winkel);
   knob.style.transform = `rotate(${winkel}deg)`;
-  needle.style.left = (position() * 100) + "%";
-  const s = senderAusWinkel();
-  labelEls.forEach((l, i) => l.classList.toggle("active", i === s));
+  needle.style.left = proz(f) + "%";
+  freqEl.textContent = fmt(f);
+  const s = naechsterSender(f);
+  markerEls.forEach((m, i) => m.classList.toggle("active", i === s));
   knob.setAttribute("aria-valuenow", s + 1);
 }
 
-function zeigeText(index) {
-  if (index === angezeigterSender) return;
-  angezeigterSender = index;
-  programmEl.classList.add("fade");
-  setTimeout(() => {
-    titelEl.textContent = PROGRAMME[index].titel;
-    inhaltEl.textContent = PROGRAMME[index].inhalt;
-    programmEl.classList.remove("fade");
-  }, 200);
+function zeigeText(i) {
+  const p = PROGRAMME[i];
+  metaEl.textContent = `Programm ${i + 1} · ${fmt(p.frequenz)} MHz`;
+  titelEl.textContent = p.titel;
+  inhaltEl.textContent = p.inhalt;
 }
 
 function beiBewegung() {
-  const warSchonAmDrehen = dreht;
+  const warSchon = dreht;
   dreht = true;
   zeichne();
-  if (!warSchonAmDrehen) aktualisiereAudio();   // Crossfade: Programm -> Rauschen
+  if (!warSchon) {
+    plate.classList.add("tuning");
+    aktualisiereAudio();            // Crossfade: Programm -> Rauschen
+  }
   clearTimeout(stoppTimer);
   if (!zeigerGedrueckt) planeStopp();
 }
@@ -186,15 +224,16 @@ function planeStopp() {
 
 function beiStopp() {
   dreht = false;
-  aktuellerSender = senderAusWinkel();
+  aktuellerSender = naechsterSender(frequenzAusWinkel(winkel));
   zeigeText(aktuellerSender);
-  aktualisiereAudio();                          // Crossfade: Rauschen -> Programm
+  plate.classList.remove("tuning");
+  aktualisiereAudio();              // Crossfade: Rauschen -> Programm
 }
 
 function setzeWinkel(neu) {
-  const begrenzt = Math.max(-MAX_WINKEL, Math.min(MAX_WINKEL, neu));
-  if (begrenzt === winkel) return;
-  winkel = begrenzt;
+  const b = Math.max(-MAX_WINKEL, Math.min(MAX_WINKEL, neu));
+  if (b === winkel) return;
+  winkel = b;
   beiBewegung();
 }
 
@@ -202,14 +241,12 @@ function setzeWinkel(neu) {
 /* =====================================================================
    EINGABE: Ziehen (Maus/Touch), Mausrad, Tastatur
    ===================================================================== */
-let zeigerGedrueckt = false;
 let letzterZeigerWinkel = 0;
 
 function zeigerWinkel(e) {
   const r = knob.getBoundingClientRect();
-  const cx = r.left + r.width / 2;
-  const cy = r.top + r.height / 2;
-  return Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI;
+  return Math.atan2(e.clientY - (r.top + r.height / 2),
+                    e.clientX - (r.left + r.width / 2)) * 180 / Math.PI;
 }
 
 knob.addEventListener("pointerdown", e => {
@@ -243,8 +280,8 @@ knob.addEventListener("wheel", e => {
 }, { passive: false });
 
 knob.addEventListener("keydown", e => {
-  if (e.key === "ArrowRight" || e.key === "ArrowUp") { setzeWinkel(winkel + 6); e.preventDefault(); }
-  if (e.key === "ArrowLeft"  || e.key === "ArrowDown") { setzeWinkel(winkel - 6); e.preventDefault(); }
+  if (e.key === "ArrowRight" || e.key === "ArrowUp")   { setzeWinkel(winkel + 4); e.preventDefault(); }
+  if (e.key === "ArrowLeft"  || e.key === "ArrowDown") { setzeWinkel(winkel - 4); e.preventDefault(); }
 });
 
 
@@ -253,18 +290,14 @@ knob.addEventListener("keydown", e => {
    ===================================================================== */
 startBtn.addEventListener("click", async () => {
   startBtn.disabled = true;
-  startBtn.textContent = "Lade Sender …";
+  startBtn.textContent = "Lade …";
   try {
     await audioStarten();
-    startEl.style.display = "none";
   } catch (err) {
     console.error(err);
-    startBtn.disabled = false;
-    startBtn.textContent = "Fehler beim Laden – erneut versuchen";
-    alert("Audiodateien konnten nicht geladen werden.\n" +
-          "Liegen gen1.mp3 … gen6.mp3 und noise.mp3 im Ordner \"" + SOUND_ORDNER + "\"?\n" +
-          "Lokal bitte über einen Server öffnen (nicht per Doppelklick).\n\n" + err.message);
+    statusEl.textContent = "Audio konnte nicht gestartet werden: " + err.message;
   }
+  startEl.style.display = "none";
 });
 
 
